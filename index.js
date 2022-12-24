@@ -289,7 +289,7 @@ function deleteUserTask(user_id, task_id){
 }
 
 function clearUserCompletedTask(user_id){
-    todoDb = todoDb.filter((each)=> each.completed === true);
+    todoDb = todoDb.filter((each)=> each.completed !== true);
 
     return todoDb;
 }
