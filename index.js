@@ -1,9 +1,9 @@
-const io = require('socket.io')(3000)
-// , {
-//     cors:{
-//         origin: []
-//     }
-// })
+const crypto = require('crypto');
+const io = require('socket.io')(3000, {
+    cors:{
+        origin: ['http://127.0.0.1:5173',]
+    }
+})
 
 /* 
     Events
@@ -15,6 +15,7 @@ const io = require('socket.io')(3000)
     6) subscribe: // join room and load task of authenticated user
     7) tasks_update: // Send updated tasks, an array means new, and object mean update
     8) remove_task: // sends tasks_id to remove across all platforms
+    9) clear_completed_task: // clears user completed tasks
 */
 const EVENTS = {
     connection:'connection',
@@ -30,7 +31,46 @@ const EVENTS = {
     // Outward event
     tasks_update:"tasks_update",
     remove_task:"remove_task",
+    clear_completed_task:"clear_completed_task",
 }
+
+let todoDb = [{
+        _id: 1,
+        task: "Completed online Javascript course",
+        completed: true,
+        platform:'web',
+    },
+    {
+        _id: 2,
+        task: "Jog around the park 3x",
+        completed: false,
+        platform:'web',
+    },
+    {
+        _id: 3,
+        task: "10 minutes meditation",
+        completed: false,
+        platform:'web',
+    },
+    {
+        _id: 4,
+        task: "Read for 1 hour",
+        completed: false,
+        platform:'web',
+    },
+    {
+        _id: 5,
+        task: "Pick up groceries",
+        completed: false,
+        platform:'web',
+    },
+    {
+        _id: 6,
+        task: "Complete Todo App on Frontend Mentor",
+        completed: false,
+        platform:'web',
+    },
+]
 
 // Auth namespace
 // namespace for just auth feature, should close when authenticated
@@ -45,7 +85,14 @@ authIo.on(EVENTS.connection, socket=>{
         console.log(data);
 
         // send token back to client
-        cb('sample_token');
+        cb({
+            socketId:socket.id,
+            error:null,
+            data:{
+                message:"Account Created",
+                data,
+            }
+        });
     });
 
     socket.on(EVENTS.signin_account, (data, cb)=>{
@@ -53,6 +100,7 @@ authIo.on(EVENTS.connection, socket=>{
         // if user exist, return a payload with token
         // otherwise return a payload with error instead of token
         console.log(data);
+        const  token = getUserId(data);
 
         // send payload back to client
         cb({
@@ -62,7 +110,7 @@ authIo.on(EVENTS.connection, socket=>{
             error:null, // a payload if there is error
             data:{
                 message: 'All is well',
-                ...data
+                token,
             }
         });
     });
@@ -77,8 +125,8 @@ const taskIo = io.of('/task');
 
 // Setup auth middleware
 taskIo.use((socket, next)=>{
-    // User_id will be used as token
-    const {user_id:token} = socket.handshake?.auth || {};
+    // User_id will be used as token    
+    const {token} = socket.handshake?.auth || {};
 
     if(Boolean(token)){ // if there is an auth token in connection
 
@@ -86,33 +134,13 @@ taskIo.use((socket, next)=>{
             socket.userId = getUserIdFromToken(token);
             next();
         }catch (err){
-            // send an connection error payload
-            // data is null
-            const payload = {
-                
-                socketId: socket.id,
-                error:{
-                    message: "Invalid auth token"
-                },
-                data:null
-            }
-
-            next(new Error(payload));
+            // send an connection error message
+            next(new Error("Invalid auth token"));
         }
         
     }else{
-        // send an connection error payload
-        // data is null
-        const payload = {
-            
-            socketId: socket.id,
-            error:{
-                message: "Authentication is required!",
-            },
-            data:null
-        }
-
-        next(new Error(payload));
+        // send an connection error message
+        next(new Error("Authentication is required!"));
     }
 
 });
@@ -142,16 +170,16 @@ taskIo.on('connection', socket=>{
         const user_id = socket.userId;
 
         // Create task for user
-        const created_task = createUserTask(user_id, task);
+        const updated_tasks = createUserTask(user_id, task);
 
         const payload = {
             socketId: socket.id,
             error:null,
-            data:[created_task]
+            data:updated_tasks
         }
 
         // Return the payload with user's new task
-        socket.to(user_id).emit(EVENTS.tasks_update, payload);
+        // socket.to(user_id).emit(EVENTS.tasks_update, payload);
         cb(payload);
     });
     // Update task
@@ -159,12 +187,12 @@ taskIo.on('connection', socket=>{
         const user_id = socket.userId;        
 
         // Update user task
-        const updated_task = updateUserTask(user_id, task);
+        const updated_tasks = updateUserTask(user_id, task);
 
         const payload = {
             socketId: socket.id,
             error:null,
-            data:updated_task
+            data:updated_tasks
         }
 
         // Return the payload with user's new task
@@ -176,24 +204,42 @@ taskIo.on('connection', socket=>{
         const user_id = socket.userId;        
 
         // Delete user task
-        deleteUserTask(user_id, task_id);
+        const other_user_tasks = deleteUserTask(user_id, task_id);
 
         const payload = {
             socketId: socket.id,
             error:null,
-            data:{
-                task_id
-            }
+            data:other_user_tasks
         }
 
         // Return the payload with user's new task
-        socket.to(user_id).emit(EVENTS.remove_task, payload);
+        // socket.to(user_id).emit(EVENTS.remove_task, payload);
+        cb(payload);
+    });    
+    // Clear completed task
+    socket.on(EVENTS.clear_completed_task, (cb)=>{
+        const user_id = socket.userId;        
+
+        // Delete user task
+        const updated_user_tasks = clearUserCompletedTask(user_id);
+
+        const payload = {
+            socketId: socket.id,
+            error:null,
+            data:updated_user_tasks
+        }
+
+        // Return the payload with user's new task
+        // socket.to(user_id).emit(EVENTS.remove_task, payload);
         cb(payload);
     });    
 })
 
 
 // Helpers
+function getUserId(data){
+    return 'sample_token';
+}
 
 function getUserIdFromToken(token){
     // get user from data with token
@@ -205,17 +251,45 @@ function getUserIdFromToken(token){
 
 function getAuthUserTasks(user_id){
     // Load all the user tasks from db
-    return []
+    return todoDb;
 }
 
-function createUserTask(user_id, task){
-    return task;
+function createUserTask(user_id, task_data){
+    const {task, platform} = task_data;
+
+    todoDb.push({
+        _id: crypto.randomUUID(),
+        task,
+        completed: false,
+        platform,
+
+        user:user_id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+
+    });
+
+    return todoDb;
 }
 
 function updateUserTask(user_id, task){
-    return task;
+
+    todoDb = todoDb.map((each)=> {
+        if (each._id == task._id) return {...each, ...task, updatedAt: new Date().toISOString()};
+        return each;
+    });
+
+    return todoDb;
 }
 
 function deleteUserTask(user_id, task_id){
-    return task_id;
+    todoDb = todoDb.filter((each)=> each._id !== task_id);
+
+    return todoDb;
+}
+
+function clearUserCompletedTask(user_id){
+    todoDb = todoDb.filter((each)=> each.completed === true);
+
+    return todoDb;
 }
