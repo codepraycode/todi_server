@@ -6,7 +6,7 @@ const io = require('socket.io')(3000, {
     }
 })
 
-/* 
+/*
     Events
     1) create_account: username, email, password
     2) signin_account: email/username, password
