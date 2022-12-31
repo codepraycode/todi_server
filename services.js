@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const {UserDb, defaultTodo, TasksDb} = require('../db');
+const {UserDb, defaultTodo, TasksDb} = require('./db');
 
 let todoDb = [...TasksDb];
 let userDb = [...UserDb];
