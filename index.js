@@ -122,12 +122,16 @@ taskIo.use((socket, next)=>{
             next();
         }catch (err){
             // send an connection error message
-            next(new Error("Invalid auth token"));
+            const error = new Error("auth_error");
+            // error.code = "auth_error";
+            next(error);
         }
         
     }else{
         // send an connection error message
-        next(new Error("Authentication is required!"));
+        const error = new Error("auth_required");
+        // error.code = "auth_required";
+        next(error);
     }
 
 });
